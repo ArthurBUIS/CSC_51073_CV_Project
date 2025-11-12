@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import math
+from tqdm import tqdm
 
 def interpolate_landmarks(landmarks_sequence):
     """
@@ -73,68 +74,14 @@ def extract_pose_from_image (filename):
 
 
 
-def extract_pose_from_video(filename): 
+
+def extract_pose_from_video_interpolated(filename, show_interpolated=True): 
     """
-    ------------------------------------------------------------
-    OBJECTIVE :
-        Detect and screen in real time the position of a person detected on a video using MediaPipe.
-        The function also returns the coordinate of the pose landmarks.
-
-    INPUT :
-        - file : str
-            Path to the video file from which the pose is extracted
-
-    OUTPUT :
-        - 
-
-    EXCEPTIONS :
-        - FileNotFoundError : if the provided file path is invalid or unreadable.
-        - ValueError : if the image cannot be processed by MediaPipe.
-        - None returned if no pose is detected.
-    ------------------------------------------------------------
+    Detect pose landmarks from a video using MediaPipe.
+    Missing landmarks are interpolated.
+    Optionally visualize the interpolated landmarks.
     """
     mp_pose = mp.solutions.pose
-    mp_drawing = mp.solutions.drawing_utils
-    pose = mp_pose.Pose(static_image_mode = False, model_complexity = 2, enable_segmentation = False, min_detection_confidence = 0.3, min_tracking_confidence=0.3)
-    cap = cv2.VideoCapture(filename)
-    if not cap.isOpened():
-            raise ValueError("Unable to open the video file.")
-    
-    results = None
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(frame_rgb)
-
-        if results.pose_landmarks:
-            mp_drawing.draw_landmarks(
-                frame,
-                results.pose_landmarks,
-                mp_pose.POSE_CONNECTIONS,
-                mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
-                mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2)
-            )
-
-        cv2.imshow("Pose Estimation (Video)", frame)
-        if cv2.waitKey(1) & 0xFF == 27:  # ESC
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-    print("===== End of program =====")
-    return results.pose_landmarks if results else None
-    
-    
-def extract_pose_from_video_interpolated(filename): 
-    """
-    Detect and display pose landmarks from a video using MediaPipe.
-    Missing landmarks are interpolated and can be visualized after processing.
-    """
-    mp_pose = mp.solutions.pose
-    mp_drawing = mp.solutions.drawing_utils
 
     pose = mp_pose.Pose(
         static_image_mode=False,
@@ -148,11 +95,13 @@ def extract_pose_from_video_interpolated(filename):
     if not cap.isOpened():
         raise ValueError("Unable to open the video file.")
     
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # pour la barre tqdm
     all_landmarks = []
     frames = []
 
-    # === Première passe : détection et stockage ===
-    while cap.isOpened():
+    # === Lecture vidéo avec barre de progression ===
+    print("🔍 Processing video frames...")
+    for _ in tqdm(range(total_frames), desc="Reading frames", ncols=80):
         ret, frame = cap.read()
         if not ret:
             break
@@ -164,54 +113,58 @@ def extract_pose_from_video_interpolated(filename):
         if results.pose_landmarks:
             for i, lm in enumerate(results.pose_landmarks.landmark):
                 frame_landmarks[i] = [lm.x, lm.y, lm.z]
+        
         all_landmarks.append(frame_landmarks)
-        frames.append(frame.copy())
-
-        cv2.imshow("Pose Estimation (Raw Detection)", frame)
-        if cv2.waitKey(1) & 0xFF == 27:  # ESC
-            break
+        frames.append(frame)
 
     cap.release()
     cv2.destroyAllWindows()
 
     if not all_landmarks:
-        print("No pose landmarks detected in any frame.")
+        print("⚠️ No pose landmarks detected in any frame.")
         return None
 
     all_landmarks = np.array(all_landmarks)
     interpolated_landmarks = interpolate_landmarks(all_landmarks)
+    print("✅ Interpolation done.")
 
-    print("Interpolation done. Replaying with interpolated landmarks...")
+    # === Sauvegarde TXT ===
+    np.savetxt(
+        "test/interpolated_landmarks.txt",
+        interpolated_landmarks.reshape(-1, 3), 
+        fmt="%.6f",
+        header="x y z (flattened over all frames)",
+        comments=""
+    )
 
-    # === Deuxième passe : affichage avec interpolation ===
-    mp_pose = mp.solutions.pose  # Nécessaire ici pour accéder à POSE_CONNECTIONS
+    # === Affichage (optionnel) ===
+    if show_interpolated:
+        print("▶ Replaying with interpolated landmarks...")
 
-    for frame, landmarks in zip(frames, interpolated_landmarks):
-        h, w, _ = frame.shape
+        for frame, landmarks in tqdm(zip(frames, interpolated_landmarks), total=len(frames), desc="Displaying", ncols=80):
+            h, w, _ = frame.shape
 
-        # Dessiner d'abord les segments entre les points connectés
-        for connection in mp_pose.POSE_CONNECTIONS:
-            start_idx, end_idx = connection
-            x1, y1, z1 = landmarks[start_idx]
-            x2, y2, z2 = landmarks[end_idx]
+            # Dessiner les segments
+            for start_idx, end_idx in mp_pose.POSE_CONNECTIONS:
+                x1, y1, z1 = landmarks[start_idx]
+                x2, y2, z2 = landmarks[end_idx]
+                if not (np.isnan(x1) or np.isnan(y1) or np.isnan(x2) or np.isnan(y2)):
+                    pt1 = (int(x1 * w), int(y1 * h))
+                    pt2 = (int(x2 * w), int(y2 * h))
+                    cv2.line(frame, pt1, pt2, (0, 255, 255), 2)
 
-            if not (np.isnan(x1) or np.isnan(y1) or np.isnan(x2) or np.isnan(y2)):
-                pt1 = (int(x1 * w), int(y1 * h))
-                pt2 = (int(x2 * w), int(y2 * h))
-                cv2.line(frame, pt1, pt2, (0, 255, 255), 2)  # ligne jaune
+            # Dessiner les points
+            for (x, y, z) in landmarks:
+                if not np.isnan(x) and not np.isnan(y):
+                    cx, cy = int(x * w), int(y * h)
+                    cv2.circle(frame, (cx, cy), 3, (0, 255, 0), -1)
 
-        # Ensuite, dessiner les points
-        for (x, y, z) in landmarks:
-            if not np.isnan(x) and not np.isnan(y):
-                cx, cy = int(x * w), int(y * h)
-                cv2.circle(frame, (cx, cy), 3, (0, 255, 0), -1)
+            cv2.imshow("Pose Estimation (Interpolated)", frame)
+            if cv2.waitKey(20) & 0xFF == 27:  # ESC pour quitter
+                break
 
-        cv2.imshow("Pose Estimation (Interpolated)", frame)
-        if cv2.waitKey(20) & 0xFF == 27:
-            break
-
-    cv2.destroyAllWindows()
-    print("===== End of program =====")
+        cv2.destroyAllWindows()
+        print("===== End of visualization =====")
 
     return interpolated_landmarks
 
@@ -234,7 +187,7 @@ def extract_pose_from_webcam():
     ------------------------------------------------------------
     """
     mp_pose = mp.solutions.pose
-    pose = mp_pose.Pose(static_image_mode=False, model_complexity=2, enable_segmentation=False, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    pose = mp_pose.Pose(static_image_mode=False, model_complexity=2, enable_segmentation=False, min_detection_confidence=0.3, min_tracking_confidence=0.7)
     mp_drawing = mp.solutions.drawing_utils
 
     #Open the webcam
@@ -273,5 +226,5 @@ def extract_pose_from_webcam():
 if __name__ == "__main__":
     # filename = "data/squat.jpg"  
     # extract_pose_from_image(filename)
-    extract_pose_from_video_interpolated("data/data-btc/bench press/bench press_0.mp4")
+    extract_pose_from_video_interpolated("data/data-crawl/chest fly machine/chest fly machine_8.mp4")
     # extract_pose_from_webcam()
