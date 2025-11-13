@@ -135,17 +135,11 @@ class Dataset:
         if video_data.frames is None:
             return
         
-        for i in range(video_data.num_frames()):
-            frame_landmarks = video_data.frames[i]
-            frame_data = FrameData(
-                filename=video_data.filename,
-                frame_index=i,
-                landmarks=frame_landmarks,
-                predicted_class=video_data.predicted_class,
-                confidence=video_data.confidence,
-                scores=video_data.scores,
-                ground_truth=video_data.ground_truth
-            )
+        for frame_data in video_data.frames:
+            frame_data.predicted_class = video_data.predicted_class
+            frame_data.confidence = video_data.confidence
+            frame_data.scores = video_data.scores
+            frame_data.ground_truth = video_data.ground_truth
             self.add_data(frame_data)
 
     def __len__(self) -> int:
@@ -164,11 +158,11 @@ class Dataset:
         Only includes frames with both landmarks and labels.
         """
         X, y = [], []
-        for v in self.datas:
-            if v.landmarks is None or v.ground_truth is None:
+        for frame_data in self.datas:
+            if frame_data.landmarks is None or frame_data.ground_truth is None:
                 continue
-            X.append(v.landmarks.astype(np.float32))
-            y.append(list(Exercise).index(v.ground_truth))
+            X.append(frame_data.landmarks)
+            y.append(list(Exercise).index(frame_data.ground_truth))
         return np.array(X), np.array(y)
 
     def split(self, train_ratio: float = 0.8, shuffle: bool = True, seed: Optional[int] = None):

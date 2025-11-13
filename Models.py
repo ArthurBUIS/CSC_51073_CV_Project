@@ -37,6 +37,7 @@ class ClassifierModel:
     def __init__(self, n_classes: int = 4, batch_size: int = 128):
         self.n_classes = n_classes
         self.batch_size = batch_size
+        self.model = None
 
     # ------------------------------
     # Utility building blocks
@@ -103,13 +104,27 @@ class ClassifierModel:
         x = layers.Dropout(0.3)(x)
         
         outputs = layers.Dense(self.n_classes, activation="softmax")(x)
-        model = keras.Model(inputs=inputs, outputs=outputs, name="pointnet")
-        model.summary()
-        return model
+        self.model = keras.Model(inputs=inputs, outputs=outputs, name="pointnet")
+        self.model.summary()
+        return self.model
     
     def train_model(self, train_dataset, test_dataset, epochs: int = 20, lr: float = 0.001):
-        self.model.compile(loss="categorical_crossentropy", optimizer=keras.optimizers.Adam(learning_rate=lr), metrics=["accuracy"])
-        history = self.model.fit(train_dataset, epochs=epochs, validation_data=test_dataset)
+        """
+        Train the model with the provided datasets.
+        
+        Parameters:
+        - model: The compiled Keras model
+        - train_dataset: Training dataset
+        - test_dataset: Test dataset
+        - epochs: Number of training epochs
+        - lr: Learning rate
+        """
+        model.compile(
+            loss="categorical_crossentropy", 
+            optimizer=keras.optimizers.Adam(learning_rate=lr), 
+            metrics=["accuracy"]
+        )
+        history = model.fit(train_dataset, epochs=epochs, validation_data=test_dataset)
         return history
         
     def visualize_predictions(model, test_dataset, class_names):
@@ -135,9 +150,36 @@ class ClassifierModel:
     
 
 if __name__ == "__main__":
+
     clf = ClassifierModel(n_classes=3)
     model = clf.build_model()
     model.summary()
-    train_dataset = ...
-    test_dataset = ...
+
+    # === 2️⃣ Préparation du dataset ===
+    from DataClasses import VideoData, Dataset, Exercise
+    from pose_detection import extract_pose_from_video_interpolated
+    from DataClasses import build_tf_dataset 
+
+    # Exemple avec 2 vidéos pour tester
+    video1 = VideoData(filename="data/test_bench_press.mp4", ground_truth=Exercise.BENCH_PRESS)
+    video1.landmark_estimation()
+    video1.normalize()
+
+    video2 = VideoData(filename="data/test_other.mp4", ground_truth=Exercise.SQUAT)
+    video2.landmark_estimation()
+    video2.normalize()
+
+    # Conversion en dataset de frames
+    dataset = Dataset()
+    dataset.add_video_data(video1)
+    dataset.add_video_data(video2)
+
+    # Split train / test
+    train_dataset, test_dataset = dataset.split(train_ratio=0.8)
+
+    # === 3️⃣ Construction des datasets TensorFlow ===
+    train_dataset = build_tf_dataset(train_dataset, num_classes=3, batch_size=32)
+    test_dataset = build_tf_dataset(test_dataset, num_classes=3, batch_size=32)
+
+    # === 4️⃣ Entraînement ===
     clf.train_model(train_dataset, test_dataset, epochs=10, lr=0.001)
