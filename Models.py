@@ -6,6 +6,7 @@ import imutils
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+from DataClasses import FrameData, VideoData, Dataset, Exercise
 
 
 class OrthogonalRegularizer(keras.regularizers.Regularizer):
@@ -108,23 +109,59 @@ class ClassifierModel:
         self.model.summary()
         return self.model
     
-    def train_model(self, train_dataset, test_dataset, epochs: int = 20, lr: float = 0.001):
+    def train_model(self, train_dataset, test_dataset, epochs: int = 10, lr: float = 0.001):
         """
-        Train the model with the provided datasets.
+        Train the model with the given datasets.
         
-        Parameters:
-        - model: The compiled Keras model
-        - train_dataset: Training dataset
-        - test_dataset: Test dataset
-        - epochs: Number of training epochs
-        - lr: Learning rate
+        Parameters
+        ----------
+        train_dataset : tf.data.Dataset
+            Training dataset
+        test_dataset : tf.data.Dataset
+            Testing dataset
+        epochs : int
+            Number of training epochs
+        lr : float
+            Learning rate
         """
-        model.compile(
-            loss="categorical_crossentropy", 
-            optimizer=keras.optimizers.Adam(learning_rate=lr), 
-            metrics=["accuracy"]
+        # Compilation du modèle
+        self.model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+            loss='categorical_crossentropy',
+            metrics=['accuracy']
         )
-        history = model.fit(train_dataset, epochs=epochs, validation_data=test_dataset)
+        
+        # Callbacks pour améliorer l'entraînement
+        callbacks = [
+            tf.keras.callbacks.EarlyStopping(
+                monitor='val_loss',
+                patience=5,
+                restore_best_weights=True
+            ),
+            tf.keras.callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.5,
+                patience=3,
+                min_lr=1e-7
+            )
+        ]
+        
+        # Entraînement
+        print("🚀 Début de l'entraînement...")
+        history = self.model.fit(
+            train_dataset,
+            validation_data=test_dataset,
+            epochs=epochs,
+            callbacks=callbacks,
+            verbose=1
+        )
+        
+        # Évaluation finale
+        test_loss, test_accuracy = self.model.evaluate(test_dataset, verbose=0)
+        print(f"\n📊 Résultats finaux:")
+        print(f"  Test Loss: {test_loss:.4f}")
+        print(f"  Test Accuracy: {test_accuracy:.4f}")
+        
         return history
         
     def visualize_predictions(model, test_dataset, class_names):
@@ -147,7 +184,47 @@ class ClassifierModel:
             ax.scatter(points[i,:,0], points[i,:,1],points[i,:,2])
             ax.set_title(f"pred: {class_names[preds[i].numpy()]}, label: {class_names[labels[i]]}")
         plt.show()
+        
+    def predict_frame(self, data: FrameData) -> (int, float):
+        """
+        Predict the class of a single frame and store results in the FrameData object.
+        """
+        if self.model is None:
+            raise ValueError("Model has not been built or loaded.")
+        
+        # Vérification des landmarks
+        if data.landmarks is None:
+            raise ValueError("No landmarks found in FrameData")
+        
+        # Nettoyage des données (comme dans build_tf_dataset)
+        landmarks_clean = np.nan_to_num(data.landmarks, nan=0.0, posinf=0.0, neginf=0.0)
+        input_data = np.expand_dims(landmarks_clean.astype(np.float32), axis=0)  # Ajouter dimension batch
+        
+        # Prédiction
+        predictions = self.model.predict(input_data, verbose=0)  # verbose=0 pour éviter les logs
+        predicted_class_idx = np.argmax(predictions, axis=1)[0]
+        confidence = np.max(predictions, axis=1)[0]
+        
+        # Convertir l'index de classe en Exercise enum
+        exercises_list = list(Exercise)
+        if predicted_class_idx < len(exercises_list):
+            data.predicted_class = exercises_list[predicted_class_idx]
+        else:
+            data.predicted_class = None
+        
+        data.confidence = float(confidence)
+        data.scores = predictions[0]  # Stocker toutes les probabilités
+        
+        return predicted_class_idx, confidence
     
+def normalize_label(label: str) -> str:
+    res = ""
+    for l in label:
+        if l.isalnum():
+            res += l.lower()
+        elif l == " ":
+            res += "_"
+    return res
 
 if __name__ == "__main__":
 
@@ -156,30 +233,39 @@ if __name__ == "__main__":
     model.summary()
 
     # === 2️⃣ Préparation du dataset ===
-    from DataClasses import VideoData, Dataset, Exercise
+    from DataClasses import VideoData, Dataset, Exercise, FrameData
     from pose_detection import extract_pose_from_video_interpolated
     from DataClasses import build_tf_dataset 
 
-    # Exemple avec 2 vidéos pour tester
-    video1 = VideoData(filename="data/test_bench_press.mp4", ground_truth=Exercise.BENCH_PRESS)
-    video1.landmark_estimation()
-    video1.normalize()
-
-    video2 = VideoData(filename="data/test_other.mp4", ground_truth=Exercise.SQUAT)
-    video2.landmark_estimation()
-    video2.normalize()
-
     # Conversion en dataset de frames
     dataset = Dataset()
-    dataset.add_video_data(video1)
-    dataset.add_video_data(video2)
+    
+    from tqdm import tqdm
+
+    dataset_raw = pd.read_csv("data/full_landmarks_dataset.csv")  # Pour charger le dataset complet
+    num_classes = 22
+
+    # Ajout d'une barre de chargement avec tqdm
+    for index, data in tqdm(dataset_raw.iterrows(), total=len(dataset_raw), desc="Chargement du dataset"):
+        frame_data = FrameData(
+            filename=data["video_name"], 
+            frame_index=data["frame_number"],
+            landmarks=np.array(data.drop(["video_name","total_frames","frame_number","width","height","label"])).reshape(-1, 3),
+            predicted_class=None,
+            confidence=None,
+            scores=None,
+            ground_truth=Exercise(normalize_label(data["label"]))
+        )
+        dataset.add_data(frame_data)
+
+    print(f"Dataset chargé avec succès ! Total: {len(dataset.datas)} frames")
 
     # Split train / test
     train_dataset, test_dataset = dataset.split(train_ratio=0.8)
 
     # === 3️⃣ Construction des datasets TensorFlow ===
-    train_dataset = build_tf_dataset(train_dataset, num_classes=3, batch_size=32)
-    test_dataset = build_tf_dataset(test_dataset, num_classes=3, batch_size=32)
+    train_dataset = build_tf_dataset(train_dataset, num_classes=num_classes, batch_size=32)
+    test_dataset = build_tf_dataset(test_dataset, num_classes=num_classes, batch_size=32)
 
     # === 4️⃣ Entraînement ===
     clf.train_model(train_dataset, test_dataset, epochs=10, lr=0.001)
