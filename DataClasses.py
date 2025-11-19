@@ -7,28 +7,10 @@ import tensorflow as tf
 
 
 class Exercise(Enum):
-    BARBELL_BICEPS_CURL = "barbell_biceps_curl"
-    BENCH_PRESS = "bench_press"
-    CHEST_FLY_MACHINE = "chest_fly_machine"
-    DEADLIFT = "deadlift"
-    DECLINE_BENCH_PRESS = "decline_bench_press"
-    HAMMER_CURL = "hammer_curl"
-    HIP_THRUST = "hip_thrust"
-    INCLINE_BENCH_PRESS = "incline_bench_press"
-    LAT_PULLDOWN = "lat_pulldown"
-    LATERAL_RAISE = "lateral_raise"
-    LEG_EXTENSION = "leg_extension"
-    LEG_RAISES = "leg_raises"
-    PLANK = "plank"
-    PULL_UP = "pull_up"
-    PUSH_UP = "push_up"
-    ROMANIAN_DEADLIFT = "romanian_deadlift"
-    RUSSIAN_TWIST = "russian_twist"
-    SHOULDER_PRESS = "shoulder_press"
     SQUAT = "squat"
-    T_BAR_ROW = "t_bar_row"
-    TRICEP_DIPS = "tricep_dips"
-    TRICEP_PUSHDOWN = "tricep_pushdown"
+    PUSHUP = "pushup"
+    BENCH_PRESS = "bench_press"
+    # Rajouter les autres plus tard
 
 @dataclass
 class FrameData:
@@ -103,6 +85,76 @@ class VideoData:
     
         for i, frame in enumerate(self.frames):
             frame.landmarks = array_frames[i]
+    
+    def rotate(self) -> None:
+        """
+        Re-orient skeleton to face the camera using full 3D pose (x,y,z).
+        Builds an orthonormal basis from shoulders + torso.
+        """
+        if self.frames is None:
+            return
+
+        L_SH, R_SH = 11, 12
+        L_HP, R_HP = 23, 24
+
+        for frame in self.frames:
+            pts = frame.landmarks  # (33, 3)
+
+            # --- Step 1 : Key body joints ---
+            left_shoulder  = pts[L_SH]
+            right_shoulder = pts[R_SH]
+            left_hip       = pts[L_HP]
+            right_hip      = pts[R_HP]
+
+            shoulder_center = (left_shoulder + right_shoulder) / 2
+            hip_center      = (left_hip + right_hip) / 2
+
+            # --- Step 2 : Build 3D axes ---
+
+            # Horizontal axis (left -> right)
+            x_axis = right_shoulder - left_shoulder
+            x_axis = x_axis / np.linalg.norm(x_axis)
+
+            # Torso vertical direction
+            torso = shoulder_center - hip_center
+            torso = torso / np.linalg.norm(torso)
+
+            # Depth axis = normal to torso plane (includes Z information)
+            z_axis = np.cross(x_axis, torso)
+            z_norm = np.linalg.norm(z_axis)
+            if z_norm < 1e-6:
+                # Edge case (shoulders perfectly horizontal)
+                z_axis = np.array([0, 0, 1])
+            else:
+                z_axis = z_axis / z_norm
+
+            # Recompute perfect vertical (orthogonalized)
+            y_axis = np.cross(z_axis, x_axis)
+            y_axis = -y_axis / np.linalg.norm(y_axis)
+            if np.dot(y_axis, torso) > 0:
+                y_axis = -y_axis
+
+            
+            # # --- PRINT : angle between y_axis and torso ---
+            # cos_theta = np.dot(y_axis, torso) / (np.linalg.norm(y_axis) * np.linalg.norm(torso))
+            # cos_theta = np.clip(cos_theta, -1.0, 1.0)  # pour éviter erreurs arccos
+            # angle_deg = np.arccos(cos_theta) * 180 / np.pi
+            # print(f"Frame {frame.frame_index}: angle Y-axis vs torso = {angle_deg:.2f}°")
+
+            
+            
+            # --- Step 3 : Build rotation matrix ---
+            R = np.vstack([x_axis, y_axis, z_axis]).T  # 3×3 basis
+
+            # --- Step 4 : Rotate all joints ---
+            rotated_pts = []
+            for p in pts:
+                centered = p - hip_center
+                rotated = R @ centered
+                rotated_pts.append(rotated)
+
+            frame.landmarks = np.array(rotated_pts)
+        
             
     def landmark_estimation(self) -> None:
         """
@@ -112,7 +164,7 @@ class VideoData:
         if self.filename is None:
             return
         
-        landmarks = extract_pose_from_video_interpolated(self.filename)
+        landmarks = extract_pose_from_video_interpolated(self.filename, show_interpolated = False)
         if landmarks is None:
             return
         
@@ -171,7 +223,7 @@ class Dataset:
     def get_data_arrays(self):
         """
         Returns tuple (X, y) for ML pipelines:
-        X: np.ndarray of shape (N, 33, 3)
+        X: np.ndarray of shape (N, T, 33, 3)
         y: np.ndarray of class indices
         Only includes frames with both landmarks and labels.
         """
@@ -179,76 +231,27 @@ class Dataset:
         for frame_data in self.datas:
             if frame_data.landmarks is None or frame_data.ground_truth is None:
                 continue
-                
-            # Vérifier que landmarks a la bonne forme et ne contient pas de NaN
-            landmarks = frame_data.landmarks
-            if landmarks.shape != (33, 3):
-                print(f"Warning: Skipping frame with invalid landmarks shape {landmarks.shape}")
-                continue
-            
-                
-            X.append(landmarks.astype(np.float32))
-            
-            # Obtenir l'index de la classe
-            try:
-                class_idx = list(Exercise).index(frame_data.ground_truth)
-                y.append(class_idx)
-            except ValueError:
-                print(f"Warning: Unknown exercise type {frame_data.ground_truth}")
-                continue
-                
-        return np.array(X, dtype=np.float32), np.array(y, dtype=np.int32)
+            X.append(frame_data.landmarks)
+            y.append(list(Exercise).index(frame_data.ground_truth))
+        return np.array(X), np.array(y)
 
-    def split(self, train_ratio: float = 0.8):
+    def split(self, train_ratio: float = 0.8, shuffle: bool = True, seed: Optional[int] = None):
         """
-        Split the dataset into train and test sets.
-        
-        Parameters
-        ----------
-        train_ratio : float
-            Ratio of data to use for training (default: 0.8)
-        
-        Returns
-        -------
-        tuple[Dataset, Dataset]
-            (train_dataset, test_dataset)
+        Split dataset into train/test subsets.
+        Returns (train_dataset, test_dataset)
         """
-        from sklearn.model_selection import train_test_split
-        
-        # Grouper par vidéo pour éviter le data leakage
-        videos = {}
-        for frame_data in self.datas:
-            video_name = frame_data.filename
-            if video_name not in videos:
-                videos[video_name] = []
-            videos[video_name].append(frame_data)
-        
-        # Split par vidéo
-        video_names = list(videos.keys())
-        train_videos, test_videos = train_test_split(
-            video_names, 
-            train_size=train_ratio, 
-            random_state=42,
-            stratify=None  
-        )
-        
-        # Créer les datasets
-        train_dataset = Dataset()
-        test_dataset = Dataset()
-        
-        for video_name in train_videos:
-            for frame_data in videos[video_name]:
-                train_dataset.add_data(frame_data)
-        
-        for video_name in test_videos:
-            for frame_data in videos[video_name]:
-                test_dataset.add_data(frame_data)
-        
-        print(f"Split completed:")
-        print(f"  Training: {len(train_dataset.datas)} frames from {len(train_videos)} videos")
-        print(f"  Testing: {len(test_dataset.datas)} frames from {len(test_videos)} videos")
-        
-        return train_dataset, test_dataset
+        if shuffle:
+            rng = np.random.default_rng(seed)
+            rng.shuffle(self.datas)
+
+        split_idx = int(len(self.datas) * train_ratio)
+        train_datas = self.datas[:split_idx]
+        test_datas = self.datas[split_idx:]
+        return Dataset(train_datas), Dataset(test_datas)
+
+
+
+
 
 
 def build_tf_dataset(dataset: Dataset, num_classes: int, batch_size: int = 32) -> tf.data.Dataset:
@@ -279,24 +282,6 @@ def build_tf_dataset(dataset: Dataset, num_classes: int, batch_size: int = 32) -
     if len(X) == 0 or len(y) == 0:
         raise ValueError("Dataset is empty or missing labels/landmarks.")
 
-    # CORRECTIONS : Conversion explicite des types et gestion des valeurs manquantes
-    
-    # 1. Nettoyer et convertir X
-    X = np.array(X, dtype=np.float32)  # Force le type float32
-    
-    # Remplacer les NaN et valeurs infinies par 0
-    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-    
-    # 2. Nettoyer et convertir y
-    y = np.array(y, dtype=np.int32)  # Force le type int32
-    
-    # Vérifier que les indices de classes sont valides
-    if np.any(y < 0) or np.any(y >= num_classes):
-        raise ValueError(f"Invalid class indices found. Expected [0, {num_classes-1}], got [{y.min()}, {y.max()}]")
-
-    print(f"Dataset shapes: X={X.shape}, y={y.shape}")
-    print(f"X dtype: {X.dtype}, y dtype: {y.dtype}")
-    
     # Encodage one-hot des labels
     y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
 
