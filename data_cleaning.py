@@ -223,7 +223,7 @@ def angle_between(a, b, c):
 
 def compute_dataset_features(input_csv,output_csv,first_line=0):
     """
-    Fonction pour calculer des features supplémentaires sur le dataset de landmarks.
+    Fonction pour calculer des features supplémentaires sur le dataset de landmarks. Et normalise + rotate les landmarks.
     """
     
     L_SH, R_SH = 11, 12
@@ -339,7 +339,123 @@ def compute_dataset_features(input_csv,output_csv,first_line=0):
 
                     writer.writerow(new_row)
 
+def compute_dataset_features_2(input_csv,output_csv,first_line=0):
+    """
+    Fonction pour calculer des features supplémentaires sur le dataset de landmarks. Et normalise + rotate les landmarks.
+    """
+    
+    L_SH, R_SH = 11, 12
+    L_HP, R_HP = 23, 24
+    L_ELB, R_ELB = 13, 14
+    L_WR, R_WR = 15, 16
+    L_KNEE, R_KNEE = 25, 26
+    L_ANK, R_ANK = 27, 28
+    HEAD = 0  # point tête
+    TORSO = 12
 
+    meta_cols = ['video_name','total_frames','frame_number','width','height','label']
+    lm_cols = [f"lm_{i}_{c}" for i in range(33) for c in ['x','y','z']]
+
+    # --- Lecture du CSV d'origine en chunks pour grande taille ---
+    chunk_size = 1000  # ajustable selon RAM
+
+    with open(output_csv, mode='w', newline='') as f_out:
+        # Colonnes des features
+        feature_cols = [
+            'a_elb_L','a_elb_R',        # angle coude gauche / droit
+            'a_sh_L','a_sh_R',          # angle épaule gauche / droit
+            'a_kn_L','a_kn_R',          # angle genou gauche / droit
+            'a_hp_L','a_hp_R',          # angle hanche gauche / droit
+            'a_wr_L','a_wr_R',          # angle poignet gauche / droit
+            'a_an_L','a_an_R',          # angle cheville gauche / droit
+            'd_sh','d_hp',               # distance épaules, hanches
+            'd_head_sh','d_wr_hp',       # distance tête-épaule, main-hanche
+            'd_ank_hp','d_wr','d_kn'    # distance pied-hanche, main-main, genou-genou
+        ]
+        
+        writer = csv.DictWriter(f_out, fieldnames=meta_cols + lm_cols + feature_cols)
+        writer.writeheader()
+        
+        for chunk in pd.read_csv(input_csv, chunksize=chunk_size):
+            grouped = chunk.groupby('video_name')
+            
+            for video_name, video_df in grouped:
+                T = len(video_df)
+                # reconstruire array (T,33,3)
+                lm_cols = [col for col in video_df.columns if col.startswith("lm_")]
+                landmarks = video_df[lm_cols].astype(float).values.reshape(T, 33, 3)
+                
+                # --- Normalize ---
+                hip_center = landmarks[:, [23,24], :].mean(axis=1)
+                landmarks = landmarks - hip_center[:, None, :]
+                
+                shoulders = landmarks[:, [11,12], :].mean(axis=1)
+                torso_len = np.linalg.norm(shoulders - hip_center, axis=1)
+                torso_len[torso_len == 0] = 1
+                landmarks = landmarks / torso_len[:, None, None]
+                
+                # --- Rotate ---
+                for t in range(T):
+                    pts = landmarks[t]
+                    left_shoulder  = pts[L_SH]
+                    right_shoulder = pts[R_SH]
+                    left_hip       = pts[L_HP]
+                    right_hip      = pts[R_HP]
+                    shoulder_center = (left_shoulder + right_shoulder)/2
+                    hip_center_frame = (left_hip + right_hip)/2
+
+                    y_axis = hip_center_frame - shoulder_center  
+                    y_axis /= np.linalg.norm(y_axis)
+                    shoulders_line = right_shoulder - left_shoulder
+                    shoulders_line /= np.linalg.norm(shoulders_line)
+                    z_axis = np.cross(shoulders_line, y_axis)
+                    z_norm = np.linalg.norm(z_axis)
+                    if z_norm < 1e-6:
+                        z_axis = np.array([0,0,1])
+                    else:
+                        z_axis /= z_norm
+                    x_axis = np.cross(z_axis, y_axis)
+                    x_axis /= np.linalg.norm(x_axis)
+                    if np.dot(y_axis, shoulders_line) < 0:
+                        x_axis = -x_axis
+                    R_mat = np.vstack([x_axis, y_axis, z_axis]).T
+                    landmarks[t] = np.array([R_mat @ (p - hip_center_frame) for p in pts])
+                
+                # --- Calcul des features et écriture ligne par ligne ---
+                for i, (_, row) in enumerate(video_df.iterrows()):
+                    pts = landmarks[i]
+                    new_row = {col: row[col] for col in meta_cols}
+                    
+                    # Landmarks
+                    for j in range(33):
+                        new_row[f'lm_{j}_x'] = pts[j,0]
+                        new_row[f'lm_{j}_y'] = pts[j,1]
+                        new_row[f'lm_{j}_z'] = pts[j,2]
+                    
+                    # Angles
+                    new_row['a_elb_L'] = angle_between(pts[L_SH], pts[L_ELB], pts[L_WR])
+                    new_row['a_elb_R'] = angle_between(pts[R_SH], pts[R_ELB], pts[R_WR])
+                    new_row['a_sh_L']  = angle_between(pts[L_ELB], pts[L_SH], pts[TORSO])
+                    new_row['a_sh_R']  = angle_between(pts[R_ELB], pts[R_SH], pts[TORSO])
+                    new_row['a_kn_L']  = angle_between(pts[L_HP], pts[L_KNEE], pts[L_ANK])
+                    new_row['a_kn_R']  = angle_between(pts[R_HP], pts[R_KNEE], pts[R_ANK])
+                    new_row['a_hp_L']  = angle_between(pts[L_SH], pts[L_HP], pts[L_KNEE])
+                    new_row['a_hp_R']  = angle_between(pts[R_SH], pts[R_HP], pts[R_KNEE])
+                    new_row['a_wr_L']  = angle_between(pts[L_ELB], pts[L_WR], pts[L_WR]+np.array([1,0,0]))
+                    new_row['a_wr_R']  = angle_between(pts[R_ELB], pts[R_WR], pts[R_WR]+np.array([1,0,0]))
+                    new_row['a_an_L']  = angle_between(pts[L_KNEE], pts[L_ANK], pts[L_ANK]+np.array([0,0,1]))
+                    new_row['a_an_R']  = angle_between(pts[R_KNEE], pts[R_ANK], pts[R_ANK]+np.array([0,0,1]))
+
+                    # Distances
+                    new_row['d_sh']       = np.linalg.norm(pts[L_SH]-pts[R_SH])
+                    new_row['d_hp']       = np.linalg.norm(pts[L_HP]-pts[R_HP])
+                    new_row['d_head_sh']  = np.linalg.norm(pts[HEAD]-((pts[L_SH]+pts[R_SH])/2))
+                    new_row['d_wr_hp']    = np.linalg.norm(pts[L_WR]-pts[L_HP])
+                    new_row['d_ank_hp']   = np.linalg.norm(pts[L_ANK]-((pts[L_HP]+pts[R_HP])/2))
+                    new_row['d_wr']       = np.linalg.norm(pts[L_WR]-pts[R_WR])
+                    new_row['d_kn']       = np.linalg.norm(pts[L_KNEE]-pts[R_KNEE])
+
+                    writer.writerow(new_row)
 
 if __name__ == "__main__":
     # filename = "data/squat.jpg"  
@@ -397,12 +513,13 @@ if __name__ == "__main__":
     # build_landmark_dataset(computed_folders, "data/data-btc")
     
     
-    #compute_dataset_features(input_csv="data/data-btc/full_landmarks_dataset.csv", output_csv="data/data-btc/full_landmarks_dataset_features.csv")
+    # compute_dataset_features(input_csv="data/data-btc/full_landmarks_dataset.csv", output_csv="data/data-btc/full_landmarks_dataset_features.csv")
+    compute_dataset_features_2(input_csv="data/data-btc/full_landmarks_dataset.csv", output_csv="data/data-btc/full_landmarks_dataset_features2.csv")
     
     
-    df = pd.read_csv("data/data-btc/full_landmarks_dataset.csv")
-    df_filtered = df[df["label"] == "barbell biceps curl"]
-    videos_uniques = df_filtered["video_name"].unique()
-    print(videos_uniques)
+    # df = pd.read_csv("data/data-btc/full_landmarks_dataset.csv")
+    # df_filtered = df[df["label"] == "barbell biceps curl"]
+    # videos_uniques = df_filtered["video_name"].unique()
+    # print(videos_uniques)
 
 
