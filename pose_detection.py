@@ -282,5 +282,5 @@ def extract_pose_from_webcam():
 if __name__ == "__main__":
     # filename = "data/squat.jpg"  
     # extract_pose_from_image(filename)
-    extract_pose_from_video_interpolated("data/data-btc/barbell biceps curl/barbell biceps curl_14.mp4")
-    # extract_pose_from_webcam()
+    # extract_pose_from_video_interpolated("data/data-btc/leg extension/leg extension_8.mp4")
+    extract_pose_from_webcam()
