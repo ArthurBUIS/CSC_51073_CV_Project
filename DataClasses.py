@@ -8,29 +8,35 @@ import sklearn.model_selection
 import random
 
 
+# class Exercise(Enum):
+#     BARBELL_BICEPS_CURL = "barbell_biceps_curl"
+#     BENCH_PRESS = "bench_press"
+#     CHEST_FLY_MACHINE = "chest_fly_machine"
+#     DEADLIFT = "deadlift"
+#     DECLINE_BENCH_PRESS = "decline_bench_press"
+#     HAMMER_CURL = "hammer_curl"
+#     HIP_THRUST = "hip_thrust"
+#     INCLINE_BENCH_PRESS = "incline_bench_press"
+#     LAT_PULLDOWN = "lat_pulldown"
+#     LATERAL_RAISE = "lateral_raise"
+#     LEG_EXTENSION = "leg_extension"
+#     LEG_RAISES = "leg_raises"
+#     PLANK = "plank"
+#     PULL_UP = "pull_up"
+#     PUSH_UP = "push_up"
+#     ROMANIAN_DEADLIFT = "romanian_deadlift"
+#     RUSSIAN_TWIST = "russian_twist"
+#     SHOULDER_PRESS = "shoulder_press"
+#     SQUAT = "squat"
+#     T_BAR_ROW = "t_bar_row"
+#     TRICEP_DIPS = "tricep_dips"
+#     TRICEP_PUSHDOWN = "tricep_pushdown"
+    
 class Exercise(Enum):
-    BARBELL_BICEPS_CURL = "barbell_biceps_curl"
     BENCH_PRESS = "bench_press"
-    CHEST_FLY_MACHINE = "chest_fly_machine"
-    DEADLIFT = "deadlift"
-    DECLINE_BENCH_PRESS = "decline_bench_press"
-    HAMMER_CURL = "hammer_curl"
-    HIP_THRUST = "hip_thrust"
-    INCLINE_BENCH_PRESS = "incline_bench_press"
-    LAT_PULLDOWN = "lat_pulldown"
-    LATERAL_RAISE = "lateral_raise"
-    LEG_EXTENSION = "leg_extension"
-    LEG_RAISES = "leg_raises"
-    PLANK = "plank"
     PULL_UP = "pull_up"
     PUSH_UP = "push_up"
-    ROMANIAN_DEADLIFT = "romanian_deadlift"
-    RUSSIAN_TWIST = "russian_twist"
-    SHOULDER_PRESS = "shoulder_press"
     SQUAT = "squat"
-    T_BAR_ROW = "t_bar_row"
-    TRICEP_DIPS = "tricep_dips"
-    TRICEP_PUSHDOWN = "tricep_pushdown"
 
 @dataclass
 class FrameData:

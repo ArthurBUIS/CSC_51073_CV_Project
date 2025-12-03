@@ -35,7 +35,7 @@ class ClassifierModel:
     for pose-based or point-based data.
     """
 
-    def __init__(self, n_classes: int = 4, batch_size: int = 128):
+    def __init__(self, n_classes: int = 22, batch_size: int = 128):
         self.n_classes = n_classes
         self.batch_size = batch_size
         self.model = None
@@ -85,13 +85,13 @@ class ClassifierModel:
         transformed = layers.Dot(axes=(2, 1))([inputs, feat_T])
         return transformed
 
-    def build_model(self):
+    def build_model(self, input_shape=(33, 3)):
         """
         Constructs the full classification model.
         """
-        inputs = keras.Input(shape=(33, 3)) # Format des inputs (tracking des vidéos avec 33 points 3D)
+        inputs = keras.Input(shape=input_shape) # Format des inputs (tracking des vidéos avec 33 points 3D)
     
-        x = self.tnet(inputs, 3)
+        x = self.tnet(inputs, num_features=3)
         x = self.conv_bn(x, 32)
         x = self.conv_bn(x, 32)
         x = self.tnet(x, 32)
@@ -155,7 +155,7 @@ class ClassifierModel:
             callbacks=callbacks,
             verbose=1
         )
-        
+    
         # Évaluation finale
         test_loss, test_accuracy = self.model.evaluate(test_dataset, verbose=0)
         print(f"\n📊 Résultats finaux:")
