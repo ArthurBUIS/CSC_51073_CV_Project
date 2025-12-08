@@ -1,4 +1,3 @@
-import DataClasses as dc
 from ExerciseClasses import EXERCISES
 import numpy as np
 from scipy.signal import find_peaks, savgol_filter

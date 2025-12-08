@@ -14,6 +14,7 @@ L_ELB, R_ELB = 13, 14 # elbows
 L_WR, R_WR = 15, 16 # wrists
 L_KNEE, R_KNEE = 25, 26 # knees
 L_ANK, R_ANK = 27, 28 # ankles
+L_FT, R_FT = 31, 32 # feet
 HEAD = 0  # head
 TORSO = 12 # torso
     
@@ -244,7 +245,7 @@ def compute_features_tensor(landmarks):
     """
 
     N = landmarks.shape[0]
-    F = 17  # number of features
+    F = 19  # number of features
     features = np.zeros((N, F), dtype=np.float32)
 
     for t in range(N):
@@ -263,15 +264,17 @@ def compute_features_tensor(landmarks):
         features[t, 7] = angle_between(pts[R_SH],  pts[R_HP],   pts[R_KNEE])              # a_hp_R
         features[t, 8] = angle_between(pts[L_ELB], pts[L_WR],   pts[L_WR] + np.array([1,0,0])) # a_wr_L
         features[t, 9] = angle_between(pts[R_ELB], pts[R_WR],   pts[R_WR] + np.array([1,0,0])) # a_wr_R
+        features[t, 10] = angle_between(pts[L_KNEE], pts[L_ANK], pts[L_FT])               # a_an_L
+        features[t, 11] = angle_between(pts[R_KNEE], pts[R_ANK], pts[R_FT])               # a_an_R
 
         # ----- Distances -----
-        features[t,10] = np.linalg.norm(pts[L_SH]   - pts[R_SH])                         # d_sh
-        features[t,11] = np.linalg.norm(pts[L_HP]   - pts[R_HP])                         # d_hp
-        features[t,12] = np.linalg.norm(pts[HEAD]   - ((pts[L_SH] + pts[R_SH]) / 2))     # d_head_sh
-        features[t,13] = np.linalg.norm(pts[L_WR]   - pts[L_HP])                         # d_wr_hp
-        features[t,14] = np.linalg.norm(pts[L_ANK]  - ((pts[L_HP] + pts[R_HP]) / 2))     # d_ank_hp
-        features[t,15] = np.linalg.norm(pts[L_WR]   - pts[R_WR])                         # d_wr
-        features[t,16] = np.linalg.norm(pts[L_KNEE] - pts[R_KNEE])                       # d_kn
+        features[t,12] = np.linalg.norm(pts[L_SH]   - pts[R_SH])                         # d_sh
+        features[t,13] = np.linalg.norm(pts[L_HP]   - pts[R_HP])                         # d_hp
+        features[t,14] = np.linalg.norm(pts[HEAD]   - ((pts[L_SH] + pts[R_SH]) / 2))     # d_head_sh
+        features[t,15] = np.linalg.norm(pts[L_WR]   - pts[L_HP])                         # d_wr_hp
+        features[t,16] = np.linalg.norm(pts[L_ANK]  - ((pts[L_HP] + pts[R_HP]) / 2))     # d_ank_hp
+        features[t,17] = np.linalg.norm(pts[L_WR]   - pts[R_WR])                         # d_wr
+        features[t,18] = np.linalg.norm(pts[L_KNEE] - pts[R_KNEE])                       # d_kn
 
     return features
 

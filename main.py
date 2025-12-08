@@ -1,15 +1,9 @@
 # Importation des bibliothèques
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-import torch
-import torch.nn as nn
-from sklearn.model_selection import train_test_split
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import GroupShuffleSplit
-from sklearn.metrics import confusion_matrix, classification_report
-import seaborn as sns
+from landmark_extraction import pipe_extract_landmark
+from grader import compute_repgrade
+from display import play_video_with_landmarks_and_reps
+from classifier import predict_exercise
 
 def main():
     """
@@ -19,10 +13,24 @@ def main():
 # Partie 1 : Lecture de la vidéo et extraction des landmarks
 # ==============================================================================
 
+    filename ="data/test_other.mp4"
+    landmarks, df = pipe_extract_landmark(filename)
+    
 # ==============================================================================
 # Partie 2 : Classification de la vidéo
 # ==============================================================================
     
+    predicted_exercise = predict_exercise(df)
+    print(f"Exercice prédit : {predicted_exercise}")
+    
 # ==============================================================================
 # Partie 3 : Comptage des répétitions et calcul des scores
 # ==============================================================================
+
+    rep_starts, sim_list = compute_repgrade(df, predicted_exercise)
+    print(rep_starts)
+    print(sim_list)
+    play_video_with_landmarks_and_reps(filename, landmarks, rep_starts, sim_list)
+    
+if __name__ == "__main__":
+    main()
