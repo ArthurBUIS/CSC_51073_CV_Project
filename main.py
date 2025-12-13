@@ -13,7 +13,7 @@ def main():
 # Partie 1 : Lecture de la vidéo et extraction des landmarks
 # ==============================================================================
 
-    filename ="data/test_other.mp4"
+    filename ="data/raw_data/data-eval/push-up/push-up_5.mp4"
     landmarks, df = pipe_extract_landmark(filename)
     
 # ==============================================================================

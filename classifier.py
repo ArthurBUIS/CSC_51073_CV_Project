@@ -1,6 +1,3 @@
-"""A RELIRE
-"""
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -17,10 +14,10 @@ MODEL_PATH = "models/cnn_model.pth"
 PCA_PATH = "models/pca.pkl"
 
 LABEL_MAP = {
-    0: "squat",
-    1: "push-up",
-    2: "leg extension",
-    3: "barbell biceps curl"
+    0: "barbell biceps curl",
+    1: "leg extension",
+    2: "push-up",
+    3: "squat"
 }
 
 # CNN 1D
@@ -58,27 +55,27 @@ class CNN1D(nn.Module):
 def load_model_and_pca():
     model = CNN1D(num_classes=4)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+    model.to(DEVICE)
     model.eval()
 
     pca = joblib.load(PCA_PATH)
 
     return model, pca
 
-# Découpage en séquences
+# Echantillonnage des séquences
 
-def build_sequences(features):
-    X = []
+def build_sequence(features):
+    """Retourne une séquence de shape (SEQ_LEN, 3) pour le CNN 1D."""
 
-    for i in range(0, len(features) - SEQ_LEN + 1, SEQ_LEN):
-        seq = features[i:i + SEQ_LEN]
-        X.append(seq)
+    if len(features) >= SEQ_LEN:
+        indices = np.linspace(0, len(features) - 1, SEQ_LEN).astype(int)
+        X = features[indices]
+    else:
+        pad = np.zeros((SEQ_LEN - len(features), features.shape[1]), dtype=features.dtype)
+        X = np.vstack([features, pad])
 
-    X = np.array(X)
-
-    if len(X) == 0:
-        raise ValueError("Vidéo trop courte pour former une séquence.")
-
-    return X
+    return X.astype(np.float32)
+        
 
 # Prétraitement dataframe
 
@@ -89,10 +86,12 @@ def preprocess_df(df, pca):
     data = df.select_dtypes(include=[np.number]).to_numpy()
     data_pca = pca.transform(data)
 
-    sequences = build_sequences(data_pca)
+    sequence = build_sequence(data_pca)
 
-    X = torch.tensor(sequences, dtype=torch.float32)
-    X = X.permute(0, 2, 1)  # (batch, 3, SEQ_LEN)
+    X = torch.tensor(sequence, dtype=torch.float32)
+    X = X.unsqueeze(0)  # (1, SEQ_LEN, 3)
+    X = X.permute(0, 2, 1)  # (1, 3, SEQ_LEN)
+    X = X.to(DEVICE)
 
     return X
 
@@ -100,14 +99,11 @@ def preprocess_df(df, pca):
 
 def predict_exercise(df):
     model, pca = load_model_and_pca()
-    df = df.drop(['video_name','total_frames','frame_number','width','height','label'], axis=1)
+    df = df.drop(['video_name','total_frames','frame_number','width','height','label'], axis=1, errors="ignore")
     X = preprocess_df(df, pca)
 
     with torch.no_grad():
         outputs = model(X)
-        preds = torch.argmax(outputs, dim=1).numpy()
+        pred_id = int(torch.argmax(outputs, dim=1).cpu().item())
 
-    # Vote majoritaire sur toutes les séquences
-    final_label = int(np.bincount(preds).argmax())
-
-    return LABEL_MAP[final_label]
+    return LABEL_MAP[pred_id]
