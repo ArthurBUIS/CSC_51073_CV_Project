@@ -13,7 +13,7 @@ def main():
 # Partie 1 : Lecture de la vidéo et extraction des landmarks
 # ==============================================================================
 
-    filename ="data/raw_data/data-eval/push-up/push-up_5.mp4"
+    filename ="data/data-eval/push-up/push-up_5.mp4"
     landmarks, df = pipe_extract_landmark(filename)
     
 # ==============================================================================
@@ -30,7 +30,7 @@ def main():
     rep_starts, sim_list = compute_repgrade(df, predicted_exercise)
     print(rep_starts)
     print(sim_list)
-    play_video_with_landmarks_and_reps(filename, landmarks, rep_starts, sim_list)
+    play_video_with_landmarks_and_reps(filename, landmarks, rep_starts, sim_list,predicted_exercise)
     
 if __name__ == "__main__":
     main()
