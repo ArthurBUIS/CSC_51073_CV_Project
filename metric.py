@@ -97,8 +97,8 @@ def angle_similarity(a1, a2, exercise, strictness=2, weight_scale=1):
     weighted = (exercise.angle_weights / weight_scale) * (np.abs(diff) ** strictness)
     score = np.exp(-np.sum(weighted)) #For discrimination
     
-    score = (score - 0.08)*100  # factor ajuste la pente
-    score = 1.2 * 1 / (1 + np.exp(-score))
+    score = (score - exercise.c)  # factor ajuste la pente
+    score = exercise.a * 1 / (1 + np.exp(-score*exercise.b))
     return score
     return score
 

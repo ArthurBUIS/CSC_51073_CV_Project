@@ -68,6 +68,11 @@ def play_video_with_landmarks_and_reps(path, landmarks, rep_starts, sim_list, ex
         cv2.rectangle(overlay, (10, 10), (10 + panel_w, 10 + panel_h), (0, 0, 0), -1)
         alpha = 0.6
         cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        
+        if frame_idx < rep_starts[0] or frame_idx >= rep_starts[-1]:
+            current_rep = None
+        else:
+            current_rep = np.searchsorted(rep_starts, frame_idx, side="right") - 1
 
         # Text with shadow
         def put_text_shadow(img, text, pos, font, scale, color, shadow_color=(0,0,0), thickness=2):
@@ -76,9 +81,20 @@ def play_video_with_landmarks_and_reps(path, landmarks, rep_starts, sim_list, ex
             cv2.putText(img, text, pos, font, scale, color, thickness, cv2.LINE_AA)
 
         put_text_shadow(frame, f"Exercise: {exercise_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255))
-        put_text_shadow(frame, f"Reps: {rep_idx+1}/{len(rep_starts)}", (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255))
-        if rep_idx < len(sim_list):
-            put_text_shadow(frame, f"Score: {sim_list[rep_idx]:.2f}", (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0))
+        if current_rep is None:
+            rep_text = "Reps: -"
+        else:
+            rep_text = f"Reps: {current_rep + 1}/{len(rep_starts) - 1}"
+
+        put_text_shadow(frame, rep_text, (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255))
+        
+        if current_rep is None or current_rep >= len(sim_list):
+            score_text = "Score: -"
+        else:
+            score_text = f"Score: {sim_list[current_rep]:.2f}"
+
+        put_text_shadow(frame,score_text,(20, 110),cv2.FONT_HERSHEY_SIMPLEX,0.8,(255, 255, 0))
+
 
         # Display icon
         if icon is not None:
@@ -86,14 +102,24 @@ def play_video_with_landmarks_and_reps(path, landmarks, rep_starts, sim_list, ex
             frame_h, frame_w = frame.shape[:2]
             x_offset = frame_w - iw - 15
             y_offset = 15
-            if icon.shape[2] == 4: 
+
+            # Draw shadow rectangle
+            shadow_color = (0, 0, 0)
+            alpha_shadow = 0.6
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (x_offset-5, y_offset-5), (x_offset+iw+5, y_offset+ih+5), shadow_color, -1)
+            cv2.addWeighted(overlay, alpha_shadow, frame, 1 - alpha_shadow, 0, frame)
+
+            # Paste icon
+            if icon.shape[2] == 4:  # RGBA
                 alpha_s = icon[:, :, 3] / 255.0
                 for c in range(3):
                     frame[y_offset:y_offset+ih, x_offset:x_offset+iw, c] = (
                         alpha_s * icon[:, :, c] + (1 - alpha_s) * frame[y_offset:y_offset+ih, x_offset:x_offset+iw, c]
                     )
-            else:  
+            else:  # RGB
                 frame[y_offset:y_offset+ih, x_offset:x_offset+iw] = icon
+
 
         # Final display
         cv2.imshow("Video + Landmarks + Reps", frame)

@@ -82,11 +82,12 @@ def detect_repetitions_ex(X, exercise, min_dist=40):
     min_amp = exercise.sensibility * (coord_smooth.max() - coord_smooth.min())
     # print(peaks)
     # ---- 4) Filtrage amplitude ----
-    good_peaks = [0]
+    good_peaks = []
     for p in peaks:
         # print(f"max{peak_values.max()}, cord{coord_smooth[p]}, min {min_amp}")
         if peak_values.max() - signal[p] < min_amp:
             good_peaks.append(p)
+    print(f"good_peaks : {good_peaks}")
     return np.array(good_peaks)
 
 
@@ -137,7 +138,7 @@ def compute_repgrade(df, name_exercise):
     if len(rep_starts) == 0:
         rep_starts = [0]
 
-    rep_starts = list(rep_starts) + [len(X1)]
+    rep_starts = list(rep_starts)
 
     # --- 6. DTW sur la première répétition ---
     current_rep = 0
