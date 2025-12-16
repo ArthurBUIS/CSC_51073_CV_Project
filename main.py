@@ -13,7 +13,7 @@ def main():
 # Partie 1 : Lecture de la vidéo et extraction des landmarks
 # ==============================================================================
 
-    filename ="data/data-btc/leg extension/leg extension_21.mp4"
+    filename ="data/push-up_good-test0.mp4"
     landmarks, df = pipe_extract_landmark(filename)
     
 # ==============================================================================
@@ -21,15 +21,15 @@ def main():
 # ==============================================================================
     
     predicted_exercise = predict_exercise(df)
-    print(f"Exercice prédit : {predicted_exercise}")
+    print(f"Predicted exercise : {predicted_exercise}")
     
 # ==============================================================================
 # Partie 3 : Comptage des répétitions et calcul des scores
 # ==============================================================================
 
     rep_starts, sim_list = compute_repgrade(df, predicted_exercise)
-    print(rep_starts)
-    print(sim_list)
+    print(f"Frames where repetitions start: {rep_starts}")
+    print(f"Similarity scores for each repetition: {sim_list}")
     play_video_with_landmarks_and_reps(filename, landmarks, rep_starts, sim_list,predicted_exercise)
     
 if __name__ == "__main__":

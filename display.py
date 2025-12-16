@@ -135,7 +135,7 @@ def play_video_with_landmarks_and_reps(path, landmarks, rep_starts, sim_list, ex
 
 
 if __name__ == "__main__":
-    filename ="data/data-btc/push-up/push-up_test1.mp4"
+    filename ="data/push-up_test1.mp4"
     landmarks, df = le.pipe_extract_landmark(filename)
     rep_starts, sim_list = gr.compute_repgrade(df, "push-up")
     play_video_with_landmarks_and_reps(filename, landmarks, rep_starts, sim_list)

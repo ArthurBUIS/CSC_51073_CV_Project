@@ -14,7 +14,8 @@ Files:
 Folders:
  - models (gitignored): contains the parameters of the trained CNN and PCA
  - ref: contains the landmarks files for the reference execution of each exercise
- - data: contains a few test videos for running the pipeline, and the landmarks dataset which was used to train the models
+ - data (gitignored): contains a few test videos for running the pipeline, and the landmarks dataset which was used to train the models
+ - icons: contains PNG symbols for the display function
 
 To run the pipeline, please choose a video in the data file, edit the filename line in main.py file and run main.py
 

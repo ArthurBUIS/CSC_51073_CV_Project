@@ -87,7 +87,6 @@ def detect_repetitions_ex(X, exercise, min_dist=40):
         # print(f"max{peak_values.max()}, cord{coord_smooth[p]}, min {min_amp}")
         if peak_values.max() - signal[p] < min_amp:
             good_peaks.append(p)
-    print(f"good_peaks : {good_peaks}")
     return np.array(good_peaks)
 
 
