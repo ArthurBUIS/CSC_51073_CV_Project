@@ -2,36 +2,12 @@ from enum import Enum
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional, List
-from pose_detection import extract_pose_from_video_interpolated
+from landmark_extraction import extract_pose_from_video_interpolated
 import tensorflow as tf
 import sklearn.model_selection
 import random
 
 
-# class Exercise(Enum):
-#     BARBELL_BICEPS_CURL = "barbell_biceps_curl"
-#     BENCH_PRESS = "bench_press"
-#     CHEST_FLY_MACHINE = "chest_fly_machine"
-#     DEADLIFT = "deadlift"
-#     DECLINE_BENCH_PRESS = "decline_bench_press"
-#     HAMMER_CURL = "hammer_curl"
-#     HIP_THRUST = "hip_thrust"
-#     INCLINE_BENCH_PRESS = "incline_bench_press"
-#     LAT_PULLDOWN = "lat_pulldown"
-#     LATERAL_RAISE = "lateral_raise"
-#     LEG_EXTENSION = "leg_extension"
-#     LEG_RAISES = "leg_raises"
-#     PLANK = "plank"
-#     PULL_UP = "pull_up"
-#     PUSH_UP = "push_up"
-#     ROMANIAN_DEADLIFT = "romanian_deadlift"
-#     RUSSIAN_TWIST = "russian_twist"
-#     SHOULDER_PRESS = "shoulder_press"
-#     SQUAT = "squat"
-#     T_BAR_ROW = "t_bar_row"
-#     TRICEP_DIPS = "tricep_dips"
-#     TRICEP_PUSHDOWN = "tricep_pushdown"
-    
 class Exercise(Enum):
     BENCH_PRESS = "bench_press"
     PULL_UP = "pull_up"
@@ -160,15 +136,6 @@ class VideoData:
             if np.dot(y_axis, torso) > 0:
                 y_axis = -y_axis
 
-            
-            # # --- PRINT : angle between y_axis and torso ---
-            # cos_theta = np.dot(y_axis, torso) / (np.linalg.norm(y_axis) * np.linalg.norm(torso))
-            # cos_theta = np.clip(cos_theta, -1.0, 1.0)  # pour éviter erreurs arccos
-            # angle_deg = np.arccos(cos_theta) * 180 / np.pi
-            # print(f"Frame {frame.frame_index}: angle Y-axis vs torso = {angle_deg:.2f}°")
-
-            
-            
             # --- Step 3 : Build rotation matrix ---
             R = np.vstack([x_axis, y_axis, z_axis]).T  # 3×3 basis
 
@@ -190,7 +157,7 @@ class VideoData:
         if self.filename is None:
             return
         
-        landmarks = extract_pose_from_video_interpolated(self.filename, show_interpolated = False)
+        landmarks = extract_pose_from_video_interpolated(self.filename, show = False)
         if landmarks is None:
             return
         
@@ -258,15 +225,15 @@ class Dataset:
             if frame_data.landmarks is None or frame_data.ground_truth is None:
                 continue
                 
-            # Vérifier que landmarks a la bonne forme et ne contient pas de NaN
+            # Check that landmarks has the right shape and no NaN
             landmarks = frame_data.landmarks
             if landmarks.shape != (33, 3):
                 print(f"Warning: Skipping frame with invalid landmarks shape {landmarks.shape}")
                 continue
-            
+
             X.append(landmarks.astype(np.float32))
-            
-            # Obtenir l'index de la classe
+
+            # Get the class index
             try:
                 class_idx = list(Exercise).index(frame_data.ground_truth)
                 y.append(class_idx)
@@ -275,30 +242,6 @@ class Dataset:
                 continue
                 
         return np.array(X, dtype=np.float32), np.array(y, dtype=np.int32)
-
-    # def split(self, train_ratio: float = 0.8):
-    #     """
-    #     Split dataset into train/test subsets.
-    #     It does not shuffle the frames of a single video between train and test.
-    #     Returns (train_dataset, test_dataset)
-    #     """
-    #     changes_idx = [0]
-    #     current_filename = self.datas[0].filename if len(self.datas) > 0 else None
-    #     for i, data in enumerate(self.datas):
-    #         if data.filename != current_filename:
-    #             changes_idx.append(i)
-    #             current_filename = data.filename
-    #     changes_idx.append(len(self.datas))
-    #     shuffled_datas = []
-    #     permutation = np.random.permutation(len(changes_idx) - 1)
-    #     for i in permutation:
-    #         shuffled_datas.append(self.datas[changes_idx[i]:changes_idx[i+1]])
-    #     # Now the data is shuffled by video
-    #     self.datas = shuffled_datas
-    #     split_idx = int(len(self.datas) * train_ratio)
-    #     train_datas = self.datas[:split_idx]
-    #     test_datas = self.datas[split_idx:]
-    #     return Dataset(train_datas), Dataset(test_datas)
 
     def split(self, train_ratio: float = 0.8):
         """
@@ -314,15 +257,15 @@ class Dataset:
         """
         from sklearn.model_selection import train_test_split
         
-        # Grouper par vidéo pour éviter le data leakage
+        # Group by video to avoid data leakage
         videos = {}
         for frame_data in self.datas:
             video_name = frame_data.filename
             if video_name not in videos:
                 videos[video_name] = []
             videos[video_name].append(frame_data)
-        
-        # Split par vidéo
+
+        # Split by video
         video_names = list(videos.keys())
         train_videos, test_videos = train_test_split(
             video_names, 
@@ -331,7 +274,7 @@ class Dataset:
             stratify=None  
         )
         
-        # Créer les datasets
+        # Build the datasets
         train_dataset = Dataset()
         test_dataset = Dataset()
         
@@ -348,48 +291,3 @@ class Dataset:
         print(f"  Testing: {len(test_dataset.datas)} frames from {len(test_videos)} videos")
         
         return train_dataset, test_dataset
-
-
-def build_tf_dataset(dataset: Dataset, num_classes: int, batch_size: int = 32) -> tf.data.Dataset:
-    """
-    Convert a Dataset (collection of FrameData) into a TensorFlow-compatible dataset.
-
-    Parameters
-    ----------
-    dataset : Dataset
-        The dataset containing FrameData elements (each must have landmarks and ground_truth).
-    num_classes : int
-        Number of exercise classes (for one-hot encoding).
-    batch_size : int, optional
-        Batch size for the tf.data.Dataset.
-
-    Returns
-    -------
-    tf.data.Dataset
-        A batched and shuffled TensorFlow dataset ready for model training.
-        Each element is a tuple (X, y) with shapes:
-            X -> (33, 3)
-            y -> (num_classes,)
-    """
-
-    # Récupération des données sous forme de tableaux numpy
-    X, y = dataset.get_data_arrays()
-
-    if len(X) == 0 or len(y) == 0:
-        raise ValueError("Dataset is empty or missing labels/landmarks.")
-
-    # Encodage one-hot des labels
-    y = tf.keras.utils.to_categorical(y, num_classes=num_classes)
-
-    # Conversion en tf.data.Dataset
-    tf_ds = tf.data.Dataset.from_tensor_slices((X, y))
-
-    # Optimisations classiques pour l'entraînement
-    tf_ds = (
-        tf_ds
-        .shuffle(buffer_size=len(X))
-        .batch(batch_size)
-        .prefetch(tf.data.AUTOTUNE)
-    )
-
-    return tf_ds

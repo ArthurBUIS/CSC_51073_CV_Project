@@ -1,0 +1,13 @@
+opencv-python
+# Pinned below 1.0: mediapipe 1.0 removed the legacy `mp.solutions` API
+# (mp.solutions.pose) this codebase uses for pose landmark extraction.
+mediapipe==0.10.14
+numpy
+scipy
+fastdtw
+pandas
+tensorflow
+scikit-learn
+tqdm
+matplotlib
+imutils

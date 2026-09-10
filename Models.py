@@ -89,7 +89,7 @@ class ClassifierModel:
         """
         Constructs the full classification model.
         """
-        inputs = keras.Input(shape=input_shape) # Format des inputs (tracking des vidéos avec 33 points 3D)
+        inputs = keras.Input(shape=input_shape) # Input shape (video tracking with 33 3D points)
     
         x = self.tnet(inputs, num_features=3)
         x = self.conv_bn(x, 32)
@@ -124,14 +124,14 @@ class ClassifierModel:
         lr : float
             Learning rate
         """
-        # Compilation du modèle
+        # Compile the model
         self.model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
             loss='categorical_crossentropy',
             metrics=['accuracy']
         )
-        
-        # Callbacks pour améliorer l'entraînement
+
+        # Callbacks to improve training
         callbacks = [
             tf.keras.callbacks.EarlyStopping(
                 monitor='val_loss',
@@ -146,8 +146,8 @@ class ClassifierModel:
             )
         ]
         
-        # Entraînement
-        print("🚀 Début de l'entraînement...")
+        # Training
+        print("🚀 Starting training...")
         history = self.model.fit(
             train_dataset,
             validation_data=test_dataset,
@@ -155,10 +155,10 @@ class ClassifierModel:
             callbacks=callbacks,
             verbose=1
         )
-    
-        # Évaluation finale
+
+        # Final evaluation
         test_loss, test_accuracy = self.model.evaluate(test_dataset, verbose=0)
-        print(f"\n📊 Résultats finaux:")
+        print(f"\n📊 Final results:")
         print(f"  Test Loss: {test_loss:.4f}")
         print(f"  Test Accuracy: {test_accuracy:.4f}")
         
@@ -192,20 +192,20 @@ class ClassifierModel:
         if self.model is None:
             raise ValueError("Model has not been built or loaded.")
         
-        # Vérification des landmarks
+        # Check landmarks
         if data.landmarks is None:
             raise ValueError("No landmarks found in FrameData")
-        
-        # Nettoyage des données (comme dans build_tf_dataset)
+
+        # Clean the data (same as in build_tf_dataset)
         landmarks_clean = np.nan_to_num(data.landmarks, nan=0.0, posinf=0.0, neginf=0.0)
-        input_data = np.expand_dims(landmarks_clean.astype(np.float32), axis=0)  # Ajouter dimension batch
-        
-        # Prédiction
-        predictions = self.model.predict(input_data, verbose=0)  # verbose=0 pour éviter les logs
+        input_data = np.expand_dims(landmarks_clean.astype(np.float32), axis=0)  # Add batch dimension
+
+        # Prediction
+        predictions = self.model.predict(input_data, verbose=0)  # verbose=0 to avoid logs
         predicted_class_idx = np.argmax(predictions, axis=1)[0]
         confidence = np.max(predictions, axis=1)[0]
-        
-        # Convertir l'index de classe en Exercise enum
+
+        # Convert the class index to an Exercise enum
         exercises_list = list(Exercise)
         if predicted_class_idx < len(exercises_list):
             data.predicted_class = exercises_list[predicted_class_idx]
@@ -213,7 +213,7 @@ class ClassifierModel:
             data.predicted_class = None
         
         data.confidence = float(confidence)
-        data.scores = predictions[0]  # Stocker toutes les probabilités
+        data.scores = predictions[0]  # Store all probabilities
         
         return predicted_class_idx, confidence
     
@@ -232,23 +232,23 @@ if __name__ == "__main__":
     model = clf.build_model()
     model.summary()
 
-    # === 2️⃣ Préparation du dataset ===
+    # === 2. Dataset preparation ===
     from DataClasses import VideoData, Dataset, Exercise, FrameData
-    from pose_detection import extract_pose_from_video_interpolated
-    from DataClasses import build_tf_dataset 
+    from landmark_extraction import extract_pose_from_video_interpolated
+    from DataClasses import build_tf_dataset
 
-    # Conversion en dataset de frames
+    # Convert to a dataset of frames
     dataset = Dataset()
-    
+
     from tqdm import tqdm
 
-    dataset_raw = pd.read_csv("data/full_landmarks_dataset.csv")  # Pour charger le dataset complet
+    dataset_raw = pd.read_csv("data/full_landmarks_dataset.csv")  # Load the full dataset
     num_classes = 22
 
-    # Ajout d'une barre de chargement avec tqdm
-    for index, data in tqdm(dataset_raw.iterrows(), total=len(dataset_raw), desc="Chargement du dataset"):
+    # Progress bar via tqdm
+    for index, data in tqdm(dataset_raw.iterrows(), total=len(dataset_raw), desc="Loading dataset"):
         frame_data = FrameData(
-            filename=data["video_name"], 
+            filename=data["video_name"],
             frame_index=data["frame_number"],
             landmarks=np.array(data.drop(["video_name","total_frames","frame_number","width","height","label"])).reshape(-1, 3),
             predicted_class=None,
@@ -258,14 +258,14 @@ if __name__ == "__main__":
         )
         dataset.add_data(frame_data)
 
-    print(f"Dataset chargé avec succès ! Total: {len(dataset.datas)} frames")
+    print(f"Dataset loaded successfully! Total: {len(dataset.datas)} frames")
 
-    # Split train / test
+    # Train / test split
     train_dataset, test_dataset = dataset.split(train_ratio=0.8)
 
-    # === 3️⃣ Construction des datasets TensorFlow ===
+    # === 3. Build the TensorFlow datasets ===
     train_dataset = build_tf_dataset(train_dataset, num_classes=num_classes, batch_size=32)
     test_dataset = build_tf_dataset(test_dataset, num_classes=num_classes, batch_size=32)
 
-    # === 4️⃣ Entraînement ===
+    # === 4. Training ===
     clf.train_model(train_dataset, test_dataset, epochs=10, lr=0.001)

@@ -3,40 +3,40 @@ from ExerciseClasses import EXERCISES
 
 
 ANGLE_TRIPLETS = [
-    # Bras
-    (11, 13, 15),  # épaule g - coude g - poignet g
-    (12, 14, 16),  # épaule d - coude d - poignet d
+    # Arms
+    (11, 13, 15),  # L shoulder - L elbow - L wrist
+    (12, 14, 16),  # R shoulder - R elbow - R wrist
 
-    # Jambes
-    (23, 25, 27),  # hanche g - genou g - cheville g
-    (24, 26, 28),  # hanche d - genou d - cheville d
+    # Legs
+    (23, 25, 27),  # L hip - L knee - L ankle
+    (24, 26, 28),  # R hip - R knee - R ankle
 
-    # Orientation tronc
-    (11, 23, 25),  # épaule g - hanche g - genou g
-    (12, 24, 26),  # épaule d - hanche d - genou d
+    # Torso orientation
+    (11, 23, 25),  # L shoulder - L hip - L knee
+    (12, 24, 26),  # R shoulder - R hip - R knee
 
-    # Épaules
-    (13, 11, 12),  # coude g - épaule g - épaule d
-    (14, 12, 11),  # coude d - épaule d - épaule g
+    # Shoulders
+    (13, 11, 12),  # L elbow - L shoulder - R shoulder
+    (14, 12, 11),  # R elbow - R shoulder - L shoulder
 ]
 
 landmark_weights = np.array([
-    # 0–10 : tête et tronc haut → peu utile pour les pompes
+    # 0-10: head and upper torso -> not very useful for push-ups
     0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,
-    # 11–16 : épaules, coudes, poignets → pivot principal du mouvement
-    1.0,  # 11 épaule g
-    1.0,  # 12 épaule d
-    1.0,  # 13 coude g
-    1.0,  # 14 coude d
-    0.9,  # 15 poignet g
-    0.9,  # 16 poignet d
-    # 17–22 : tronc bas → utile
+    # 11-16: shoulders, elbows, wrists -> main pivot of the movement
+    1.0,  # 11 L shoulder
+    1.0,  # 12 R shoulder
+    1.0,  # 13 L elbow
+    1.0,  # 14 R elbow
+    0.9,  # 15 L wrist
+    0.9,  # 16 R wrist
+    # 17-22: lower torso -> useful
     0.5,0.5,0.5,0.5,0.5,0.5,
-    # 23–28 : hanches, genoux, chevilles → posture importante
-    0.8,  # hanche g
-    0.8,  # hanche d
-    0.6,0.6,0.4,0.4,  # genoux / chevilles
-    # 29–32 : pieds → peu utile
+    # 23-28: hips, knees, ankles -> important for posture
+    0.8,  # L hip
+    0.8,  # R hip
+    0.6,0.6,0.4,0.4,  # knees / ankles
+    # 29-32: feet -> not very useful
     0.2,0.2,0.2,0.2
 ], dtype=np.float32)
 
@@ -58,7 +58,7 @@ def compute_rep_cosine_similarity(X1, X2, dtw_dict, rep_start, rep_end):
         if j >= len(X2):
             continue
 
-        # On compare l’ensemble des landmarks (33×3 = 99 dims)
+        # Compare the full set of landmarks (33×3 = 99 dims)
         v1 = X1[i] * weights
         v2 = X2[j] * weights
 
@@ -82,7 +82,7 @@ def joint_angle(A, B, C, debug=False):
     norm_BC = np.linalg.norm(BC)
     cos_angle = np.dot(BA, BC) / (norm_BA * norm_BC)
 
-    # Clamp numérique
+    # Numerical clamp
     cos_angle = np.clip(cos_angle, -1.0, 1.0)
 
     angle = np.arccos(cos_angle)
@@ -97,10 +97,10 @@ def angle_similarity(a1, a2, exercise, strictness=2, weight_scale=1):
     weighted = (exercise.angle_weights / weight_scale) * (np.abs(diff) ** strictness)
     score = np.exp(-np.sum(weighted)) #For discrimination
     
-    score = (score - 0.08)*100  # factor ajuste la pente
-    score = 1.2 * 1 / (1 + np.exp(-score))
+    score = (score - exercise.c)*exercise.b  # Center around 0
+    score = exercise.a * 1 / (1 + np.exp(-score))
     return score
-    return score
+
 
 
 
@@ -125,10 +125,10 @@ def compute_rep_angle_similarity(X1, X2, dtw_dict, rep_start, rep_end, exercise)
         if j >= len(X2):
             continue
 
-        # Convertir les frames en vecteurs d'angles
+        # Convert frames to angle vectors
         ang1 = frame_to_angle_vector(X1[i])
         ang2 = frame_to_angle_vector(X2[j])
-        # Similarité cosinus sur les angles
+        # Cosine similarity on the angles
         sims.append(angle_similarity(ang1, ang2, exercise))
 
     if len(sims) == 0:

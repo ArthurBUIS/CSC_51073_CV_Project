@@ -193,7 +193,7 @@ def normalize_landmarks(landmarks):
         y_axis = y_axis / ny
         
         # 1) X-axis : should always point from LEFT to RIGHT in camera space
-        # (doit aller de l'épaule gauche vers l'épaule droite)
+        # (from the left shoulder to the right shoulder)
         if x_axis[0] < 0:
             x_axis = -x_axis
             

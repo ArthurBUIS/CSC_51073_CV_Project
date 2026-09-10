@@ -1,4 +1,11 @@
 /data/
+/data_perso/
 /test/
-/drafts/
-/__pycache__/
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+*.h5
+*.pkl
